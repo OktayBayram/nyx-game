@@ -173,8 +173,8 @@ export default function GameScreen({ route }) {
       return;
     }
     
-    // Daktilo efekti başlat
-    typerRef.current = setInterval(() => {
+    // Daktilo efekti başlat - requestAnimationFrame ile smooth
+    const typeText = () => {
       if (i < text.length) {
         // Öbek öbek yaz (3-5 karakter)
         const chunkSize = Math.floor(Math.random() * 3) + 3;
@@ -187,19 +187,22 @@ export default function GameScreen({ route }) {
           scrollViewRef.current.scrollToEnd({ animated: true });
         }
         
-        // Suspense noktaları kaldırıldı - blink yaratıyor
-        
         i = nextI;
+        
+        // requestAnimationFrame ile smooth devam
+        typerRef.current = requestAnimationFrame(() => {
+          setTimeout(typeText, Math.max(50, typeSpeedMs));
+        });
       } else {
         // Metin tamamlandı
-        clearInterval(typerRef.current);
-        typerRef.current = null;
         setShowChoices(true); // Seçenekleri göster
       }
-    }, Math.max(100, typeSpeedMs));
+    };
+    
+    typeText();
     return () => {
       if (typerRef.current) {
-        clearInterval(typerRef.current);
+        cancelAnimationFrame(typerRef.current);
         typerRef.current = null;
       }
     };
