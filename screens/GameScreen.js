@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, ImageBackground, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import storyData from '../assets/story.json';
 import { AchievementsContext } from '../shared/AchievementsContext';
@@ -213,14 +213,20 @@ export default function GameScreen({ route }) {
       </View>
 
       <Animated.View style={[styles.storyContainer, { opacity: passageFade }]}>
-        <ScrollView 
-          ref={scrollViewRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
-          showsVerticalScrollIndicator={true}
-        >
-          <Text style={styles.storyText}>{typedText}</Text>
-        </ScrollView>
+        {Platform.OS === 'web' ? (
+          <View style={{ flex: 1, overflow: 'auto', maxHeight: '60vh' }}>
+            <Text style={styles.storyText}>{typedText}</Text>
+          </View>
+        ) : (
+          <ScrollView 
+            ref={scrollViewRef}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
+            showsVerticalScrollIndicator={true}
+          >
+            <Text style={styles.storyText}>{typedText}</Text>
+          </ScrollView>
+        )}
       </Animated.View>
 
       {voteCount.total > 0 && (
