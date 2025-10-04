@@ -166,21 +166,50 @@ export default function GameScreen({ route }) {
       return;
     }
     
-    // Metni hemen göster - typewriter effect'i kaldır
-    setTypedText(text);
-    setShowChoices(true);
-    
-    // Scroll to bottom
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollToEnd({ animated: true });
+    // Kısa metinleri hemen göster
+    if (text.length < 50) {
+      setTypedText(text);
+      setShowChoices(true);
+      return;
     }
+    
+    // Daktilo efekti başlat
+    typerRef.current = setInterval(() => {
+      if (i < text.length) {
+        // Öbek öbek yaz (3-5 karakter)
+        const chunkSize = Math.floor(Math.random() * 3) + 3;
+        const nextI = Math.min(i + chunkSize, text.length);
+        
+        setTypedText(text.substring(0, nextI));
+        
+        // Scroll to bottom
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollToEnd({ animated: true });
+        }
+        
+        // Random suspense noktaları ekle
+        if (Math.random() < 0.3 && nextI < text.length) {
+          setTypedText(text.substring(0, nextI) + '...');
+          setTimeout(() => {
+            setTypedText(text.substring(0, nextI));
+          }, 200);
+        }
+        
+        i = nextI;
+      } else {
+        // Metin tamamlandı
+        clearInterval(typerRef.current);
+        typerRef.current = null;
+        setShowChoices(true); // Seçenekleri göster
+      }
+    }, Math.max(50, typeSpeedMs));
     return () => {
       if (typerRef.current) {
         clearInterval(typerRef.current);
         typerRef.current = null;
       }
     };
-  }, [currentPassage]);
+  }, [currentPassage, typeSpeedMs]);
 
   const vote = async (target) => {
     if (!voted) {
