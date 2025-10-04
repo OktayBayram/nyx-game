@@ -196,7 +196,7 @@ export default function GameScreen({ route }) {
         typerRef.current = null;
         setShowChoices(true); // Seçenekleri göster
       }
-    }, Math.max(50, typeSpeedMs));
+    }, Math.max(100, typeSpeedMs));
     return () => {
       if (typerRef.current) {
         clearInterval(typerRef.current);
