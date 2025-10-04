@@ -213,7 +213,12 @@ export default function GameScreen({ route }) {
       </View>
 
       <Animated.View style={[styles.storyContainer, { opacity: passageFade }]}>
-        <ScrollView ref={scrollViewRef}>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
+          showsVerticalScrollIndicator={true}
+        >
           <Text style={styles.storyText}>{typedText}</Text>
         </ScrollView>
       </Animated.View>
