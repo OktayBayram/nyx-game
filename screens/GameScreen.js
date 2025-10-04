@@ -187,13 +187,7 @@ export default function GameScreen({ route }) {
           scrollViewRef.current.scrollToEnd({ animated: true });
         }
         
-        // Random suspense noktaları ekle
-        if (Math.random() < 0.3 && nextI < text.length) {
-          setTypedText(text.substring(0, nextI) + '...');
-          setTimeout(() => {
-            setTypedText(text.substring(0, nextI));
-          }, 200);
-        }
+        // Suspense noktaları kaldırıldı - blink yaratıyor
         
         i = nextI;
       } else {
@@ -209,7 +203,7 @@ export default function GameScreen({ route }) {
         typerRef.current = null;
       }
     };
-  }, [currentPassage, typeSpeedMs]);
+  }, [currentPassage]);
 
   const vote = async (target) => {
     if (!voted) {
