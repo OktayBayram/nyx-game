@@ -1,12 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
-import React, { useContext, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, ImageBackground, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { memo, useContext, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import storyData from '../assets/story.json';
 import { AchievementsContext } from '../shared/AchievementsContext';
 import { SettingsContext } from '../shared/SettingsContext';
+
+// Memoized Text component - blink önleme
+const MemoizedText = memo(({ children, style }) => (
+  <Text style={style}>{children}</Text>
+));
 
 export default function GameScreen({ route }) {
   const { socket, roomCode, username } = route.params;
@@ -16,13 +21,22 @@ export default function GameScreen({ route }) {
   const [selectedChoice, setSelectedChoice] = useState(null);
   const [votersByChoice, setVotersByChoice] = useState({});
   const [typedText, setTypedText] = useState('');
-  const [showChoices, setShowChoices] = useState(false);
+  const [showChoices, setShowChoices] = useState(false); // KAPALI - metin bitince gelecek
   const [lastChoice, setLastChoice] = useState(null);
+  const [showSkipButton, setShowSkipButton] = useState(false);
+  const [displayText, setDisplayText] = useState('');
+  const [passageHistory, setPassageHistory] = useState([]); // Chat geçmişi
+  const [showTyping, setShowTyping] = useState(false); // "Yazıyor" animasyonu
+  const [typingAnimation, setTypingAnimation] = useState(0); // Animasyon durumu
+  const [messageCount, setMessageCount] = useState(0); // Mesaj sayacı
+  const isSkippedRef = useRef(false); // Skip durumu - ref ile
   const { typeSpeedMs, setTypeSpeedMs } = useContext(SettingsContext);
   const { addAchievement } = useContext(AchievementsContext);
   const typerRef = useRef(null);
   const scrollViewRef = useRef(null);
   const [textOpacity, setTextOpacity] = useState(0.3);
+  const currentTextRef = useRef('');
+  const isTypingRef = useRef(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const passageFade = useRef(new Animated.Value(1)).current;
@@ -39,15 +53,17 @@ export default function GameScreen({ route }) {
     console.log('GameScreen: Setting up socket listeners for', username);
     console.log('GameScreen: Socket connected?', socket.connected);
     socket.on('voteUpdate', ({ votes, total, votersByChoice: votersMap }) => {
-      setVoteCount({ votes, total });
-      if (votersMap) setVotersByChoice(votersMap);
-      Animated.timing(progressAnim, {
-        toValue: total > 0 ? votes / total : 0,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
+      console.log('voteUpdate received:', { votes, total, votersMap });
+      // setVoteCount({ votes, total }); // Gizlendi - blink önleme
+      // if (votersMap) setVotersByChoice(votersMap); // Gizlendi - blink önleme
+      // Animated.timing(progressAnim, { // Gizlendi - blink önleme
+      //   toValue: total > 0 ? votes / total : 0,
+      //   duration: 300,
+      //   easing: Easing.out(Easing.cubic),
+      //   useNativeDriver: false,
+      // }).start();
     });
+
 
     socket.on('voteResult', ({ choice, voteCounts, votersByChoice: votersMap, nextPassage, achievement }) => {
       console.log('GameScreen: voteResult received', { choice, voteCounts, votersMap, nextPassage, achievement });
@@ -57,8 +73,15 @@ export default function GameScreen({ route }) {
         addAchievement(achievement.key, achievement.label);
       }
       
-      // Kazanan seçimi mesaj bubble'ında göster
-      setLastChoice(choice);
+      // Kazanan seçimi geçmişe ekle (WhatsApp gibi) - tırnak işareti olmadan
+      const choiceMessage = {
+        id: `choice-${Date.now()}-${Math.random()}`,
+        title: '',
+        content: choice,
+        timestamp: new Date().toLocaleTimeString(),
+        isUserChoice: true
+      };
+      setPassageHistory(prev => [...prev, choiceMessage]);
       
       // Hikayeyi ilerlet
       if (nextPassage !== undefined) {
@@ -72,24 +95,13 @@ export default function GameScreen({ route }) {
       const isTie = topChoices.length > 1;
 
       const proceedTransition = () => {
-        Animated.timing(passageFade, {
-          toValue: 0,
-          duration: 180,
-          useNativeDriver: true,
-        }).start(() => {
-          setCurrentPassage(choice);
-          setVoted(false);
-          setSelectedChoice(null);
-          setVoteCount({ votes: 0, total: 0 });
-          setVotersByChoice({});
-          progressAnim.setValue(0);
-
-          Animated.timing(passageFade, {
-            toValue: 1,
-            duration: 240,
-            useNativeDriver: true,
-          }).start();
-        });
+        // passageFade animasyonu kaldırıldı - blink önleme
+        setCurrentPassage(nextPassage);
+        setVoted(false);
+        setSelectedChoice(null);
+        setVoteCount({ votes: 0, total: 0 });
+        setVotersByChoice({});
+        progressAnim.setValue(0);
       };
 
       if (isTie) {
@@ -151,68 +163,128 @@ export default function GameScreen({ route }) {
     });
   };
 
-  // Smooth daktilo efekti (öbek öbek) + suspense
+  // Typewriter effect - tek useEffect
   useEffect(() => {
     const text = decodeHtmlEntities(passage?.content || '');
     setTypedText('');
-    setShowChoices(false); // Yeni passage'da seçimleri gizle
-    setTextOpacity(1.0); // Sabit opacity
-    if (typerRef.current) clearInterval(typerRef.current);
-    let i = 0;
+    setDisplayText('');
+    setShowChoices(false); // Seçenekler kapalı - metin bitince gelecek
+    setShowSkipButton(true);
+    isTypingRef.current = true;
     
-    // Eğer metin zaten tamamlanmışsa tekrar yazma
-    if (text === typedText) {
-      setShowChoices(true);
-      return;
-    }
+    // "Yazıyor" animasyonu - WhatsApp gibi
+    setShowTyping(true);
+    setShowChoices(false);
+    setShowSkipButton(true);
+    isSkippedRef.current = false; // Her yeni pasajda reset
+    setLastChoice(null); // Önceki seçimi temizle
     
-    // Kısa metinleri hemen göster
-    if (text.length < 50) {
-      setTypedText(text);
-      setShowChoices(true);
-      return;
-    }
+    // Animasyon başlat - hızlı yanma
+    let animCount = 0;
+    const animateTyping = () => {
+      if (showTyping) {
+        setTypingAnimation(animCount % 3);
+        animCount++;
+        setTimeout(animateTyping, 500); // Daha yavaş
+      }
+    };
+    animateTyping();
     
-    // Daktilo efekti başlat - requestAnimationFrame ile smooth
-    const typeText = () => {
-      if (i < text.length) {
-        // Öbek öbek yaz (3-5 karakter)
-        const chunkSize = Math.floor(Math.random() * 3) + 3;
-        const nextI = Math.min(i + chunkSize, text.length);
+    // Cümle cümle bubble'lar oluştur
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    let sentenceIndex = 0;
+    
+    const showNextSentence = () => {
+      // Skip edildiyse dur
+      if (isSkippedRef.current) return;
+      
+      if (sentenceIndex < sentences.length) {
+        // Emoji kaldırıldı
+        const sentence = sentences[sentenceIndex].trim();
         
-        setTypedText(text.substring(0, nextI));
+        const newMessages = [{
+          id: `${currentPassage}-${sentenceIndex}-${Date.now()}-${Math.random()}`,
+          title: sentenceIndex === 0 ? currentPassage : '',
+          content: sentence,
+          timestamp: new Date().toLocaleTimeString(),
+          isSystemMessage: true
+        }];
+        
+        setPassageHistory(prev => [...prev, ...newMessages]);
+        sentenceIndex++;
         
         // Scroll to bottom
         if (scrollViewRef.current) {
-          scrollViewRef.current.scrollToEnd({ animated: true });
+          setTimeout(() => {
+            if (scrollViewRef.current) {
+              scrollViewRef.current.scrollToEnd({ animated: true });
+            }
+          }, 100);
         }
         
-        i = nextI;
-        
-        // requestAnimationFrame ile smooth devam
-        typerRef.current = requestAnimationFrame(() => {
-          setTimeout(typeText, Math.max(50, typeSpeedMs));
-        });
+        // Sonraki cümle için delay - ortalama insan yazışı
+        if (!isSkippedRef.current) {
+          const currentSentence = sentences[sentenceIndex - 1].trim();
+          const wordCount = currentSentence.split(' ').length;
+          const delay = Math.max(2000, wordCount * 800); // Ortalama insan yazışı: kelime başına 800ms, minimum 2s
+          setTimeout(showNextSentence, delay);
+        }
       } else {
-        // Metin tamamlandı
-        setShowChoices(true); // Seçenekleri göster
+        // Tüm cümleler tamamlandı
+        setShowTyping(false);
+        setShowChoices(true);
+        setShowSkipButton(false);
       }
     };
     
-    typeText();
+    // İlk cümleyi göster
+    setTimeout(showNextSentence, 2000);
     return () => {
-      if (typerRef.current) {
-        cancelAnimationFrame(typerRef.current);
-        typerRef.current = null;
-      }
+      isTypingRef.current = false;
+      setShowSkipButton(false);
     };
   }, [currentPassage]);
+
+  // Skip text function
+  const skipText = () => {
+    // Skip butonu görünüyorsa çalış
+    if (showSkipButton) {
+      isTypingRef.current = false;
+      isSkippedRef.current = true; // Skip durumunu işaretle - ref ile
+      setShowTyping(false);
+      setShowSkipButton(false);
+      setShowChoices(true);
+      
+      // Tüm cümleleri hemen göster
+      const fullText = decodeHtmlEntities(passage?.content || '');
+      const sentences = fullText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      const newMessages = sentences.map((sentence, index) => ({
+        id: `${currentPassage}-${index}-${Date.now()}-${Math.random()}`,
+        title: index === 0 ? currentPassage : '',
+        content: sentence.trim(),
+        timestamp: new Date().toLocaleTimeString()
+      }));
+      setPassageHistory(prev => [...prev, ...newMessages]);
+      
+      // Scroll to bottom - WhatsApp gibi
+      if (scrollViewRef.current) {
+        setTimeout(() => {
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
+      }
+      
+      // Backend'e skip bildir
+      socket.emit('skipText', { roomCode, currentPassage });
+    }
+  };
 
   const vote = async (target) => {
     if (!voted) {
       console.log('GameScreen: vote called', { target, roomCode });
       setSelectedChoice(target);
-      // Son seçimi sakla
+      // Son seçimi sakla - sadece sarı bubble için
       const choiceText = passage?.links.find(link => link.target === target)?.text;
       setLastChoice(choiceText);
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -222,6 +294,7 @@ export default function GameScreen({ route }) {
   };
 
 
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -229,33 +302,63 @@ export default function GameScreen({ route }) {
         <View style={[styles.bgTint, { backgroundColor: 'rgba(0,0,0,0.85)' }]} pointerEvents="none" />
 
       <View style={styles.headerRow}>
-        {lastChoice ? (
-          <View style={styles.messageBubbleRight}>
-            <Text style={styles.messageText}>"{lastChoice}"</Text>
-          </View>
-        ) : (
-          <Text style={styles.passageTitle}>{currentPassage}</Text>
-        )}
+        <Text style={styles.passageTitle}>{currentPassage}</Text>
       </View>
 
-      <Animated.View style={[styles.storyContainer, { opacity: passageFade }]}>
-        {Platform.OS === 'web' ? (
-          <View style={{ flex: 1, overflow: 'auto', maxHeight: '60vh' }}>
-            <Text style={styles.storyText}>{typedText}</Text>
+      {/* Chat geçmişi - mesaj kutusu gibi */}
+      <ScrollView 
+        ref={scrollViewRef}
+        style={styles.chatContainer}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={true}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => {
+          // Kullanıcı scroll etmeye başladığında otomatik scroll'u durdur
+          isTypingRef.current = false;
+        }}
+      >
+        {/* Geçmiş cümleler - sıralı */}
+        {passageHistory.map((item, index) => {
+          // Sistem mesajlarında kullanıcı seçimini filtrele
+          if (item.isUserChoice) {
+            return (
+              <View key={item.id} style={[styles.messageBubble, styles.choiceMessage]}>
+                <Text style={styles.messageContent}>{item.content}</Text>
+                <Text style={styles.messageTime}>{item.timestamp}</Text>
+              </View>
+            );
+          } else {
+            return (
+              <View key={item.id} style={[styles.messageBubble, styles.currentMessage]}>
+                <Text style={styles.messageContent}>{item.content}</Text>
+                <Text style={styles.messageTime}>{item.timestamp}</Text>
+              </View>
+            );
+          }
+        })}
+        
+        {/* Kullanıcı seçimi - sarı bubble */}
+        {lastChoice && (
+          <View style={[styles.messageBubble, styles.choiceMessage]}>
+            <Text style={styles.messageContent}>{lastChoice}</Text>
+            <Text style={styles.messageTime}>{new Date().toLocaleTimeString()}</Text>
           </View>
-        ) : (
-          <ScrollView 
-            ref={scrollViewRef}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
-            showsVerticalScrollIndicator={true}
-          >
-            <Text style={styles.storyText}>{typedText}</Text>
-          </ScrollView>
         )}
-      </Animated.View>
+        
+        {/* Animasyonlu 3 nokta - WhatsApp gibi */}
+        {showTyping && (
+          <View style={[styles.messageBubble, styles.typingMessage]}>
+            <View style={styles.typingDots}>
+              <Text style={[styles.typingDot, { opacity: typingAnimation === 0 ? 1 : 0.3 }]}>.</Text>
+              <Text style={[styles.typingDot, { opacity: typingAnimation === 1 ? 1 : 0.3 }]}>.</Text>
+              <Text style={[styles.typingDot, { opacity: typingAnimation === 2 ? 1 : 0.3 }]}>.</Text>
+            </View>
+          </View>
+        )}
+      </ScrollView>
 
-      {voteCount.total > 0 && (
+      {/* Progress bar gizlendi - blink önleme */}
+      {false && voteCount.total > 0 && (
         <View style={styles.progressBox}>
           <View style={styles.progressTrack}>
             <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
@@ -264,18 +367,14 @@ export default function GameScreen({ route }) {
         </View>
       )}
 
-      <View style={styles.typeControls}>
-        <View style={styles.speedRow}>
-          {[{label:'Yavaş',ms:28},{label:'Orta',ms:12},{label:'Hızlı',ms:6}].map((opt, idx) => {
-            const active = typeSpeedMs === opt.ms;
-            return (
-              <TouchableOpacity key={idx} style={[styles.speedPill, active && styles.speedPillActive]} onPress={() => setTypeSpeedMs(opt.ms)}>
-                <Text style={[styles.speedText, active && styles.speedTextActive]}>{opt.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
+      {/* Skip Button */}
+      {showSkipButton && (
+        <View style={styles.skipContainer}>
+          <TouchableOpacity style={styles.skipButton} onPress={skipText}>
+            <Text style={styles.skipButtonText}>Hızlı Geç</Text>
+          </TouchableOpacity>
         </View>
-      </View>
+      )}
 
       {showChoices && (
         <View style={styles.choicesContainer}>
@@ -334,6 +433,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     lineHeight: 24,
+    opacity: 1,
   },
   votingInfo: {
     padding: 15,
@@ -539,6 +639,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
     maxWidth: '80%',
+    alignSelf: 'flex-start',
+    marginRight: 20,
   },
   messageBubbleRight: {
     backgroundColor: 'rgba(255,255,255,0.1)',
@@ -550,6 +652,7 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
     alignSelf: 'flex-end',
     marginRight: 10,
+    marginTop: 5,
   },
   messageText: {
     color: '#fff',
@@ -566,5 +669,84 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.9)',
     zIndex: 1,
-  }
+  },
+  skipContainer: {
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  skipButton: {
+    backgroundColor: 'rgba(108, 92, 231, 0.8)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(108, 92, 231, 0.4)',
+  },
+  skipButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  chatContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  messageBubble: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: 'rgba(108, 92, 231, 0.6)',
+  },
+  currentMessage: {
+    backgroundColor: 'rgba(108, 92, 231, 0.2)',
+    borderLeftColor: '#6c5ce7',
+  },
+  choiceMessage: {
+    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+    borderLeftColor: '#ffc107',
+    alignSelf: 'flex-end',
+    maxWidth: '80%',
+    marginLeft: 20,
+    marginRight: 0,
+  },
+  typingMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2a2a2a',
+    borderColor: '#4a4a4a',
+    borderWidth: 1,
+    marginRight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  typingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  typingDot: {
+    color: '#888',
+    fontSize: 20,
+    marginHorizontal: 2,
+    fontWeight: 'bold',
+  },
+  messageTitle: {
+    color: '#d0d6ff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  messageContent: {
+    color: '#fff',
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  messageTime: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 12,
+    alignSelf: 'flex-end',
+  },
 });
