@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { memo, useContext, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Easing, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { playGame, stopGame, stopHome, playHome } from '../shared/AudioManager';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import storyData from '../assets/story.json';
 import { AchievementsContext } from '../shared/AchievementsContext';
@@ -32,7 +33,7 @@ export default function GameScreen({ route, navigation }) {
   const [lastChoiceHeight, setLastChoiceHeight] = useState(0); // Sarı rozet yüksekliği
   const [bottomBarHeight, setBottomBarHeight] = useState(0); // Alt çubuk yüksekliği
   const isSkippedRef = useRef(false); // Skip durumu - ref ile
-  const { typeSpeedMs, setTypeSpeedMs } = useContext(SettingsContext);
+  const { musicEnabled, hapticsEnabled } = useContext(SettingsContext);
   const [speedMode, setSpeedMode] = useState('medium'); // 'slow' | 'medium' | 'fast'
   const speedModeRef = useRef('medium');
   useEffect(() => { speedModeRef.current = speedMode; }, [speedMode]);
@@ -260,6 +261,29 @@ export default function GameScreen({ route, navigation }) {
     };
   }, [currentPassage]);
 
+  // Music handoff: stop home, play game on mount; reverse on unmount
+  useEffect(() => {
+    const run = async () => {
+      try {
+        await stopHome();
+        if (musicEnabled) {
+          await playGame();
+        }
+      } catch {}
+    };
+    run();
+    return () => {
+      (async () => {
+        try {
+          await stopGame();
+          if (musicEnabled) {
+            await playHome();
+          }
+        } catch {}
+      })();
+    };
+  }, [musicEnabled]);
+
   // Üç nokta animasyonu: showTyping açıkken sırayla yanacak şekilde döngü
   useEffect(() => {
     if (!showTyping) return;
@@ -331,7 +355,7 @@ export default function GameScreen({ route, navigation }) {
       <TouchableOpacity
         style={styles.headerBackButton}
         onPress={() => {
-          Alert.alert('Emin misin?', 'Lobiye dönmek istiyor musun?', [
+          Alert.alert('Are you sure?', 'Return to the lobby?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Confirm', style: 'destructive', onPress: () => navigation.goBack() },
           ]);
@@ -349,7 +373,7 @@ export default function GameScreen({ route, navigation }) {
       {/* Scroll alanı için sabit üst boşluk: rozet pozisyonu (68) + yüksekliği + tampon */}
       <View
         pointerEvents="none"
-        style={{ height: lastChoice ? (68 + lastChoiceHeight + 16) : 16 }}
+        style={{ height: lastChoice ? (68 + lastChoiceHeight + 16) : 84 }}
       />
 
       {/* Tek konteyner hikaye görünümü */}
@@ -392,17 +416,17 @@ export default function GameScreen({ route, navigation }) {
         <View style={styles.bottomBar} onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}>
           <View style={styles.speedRowBar}>
             <TouchableOpacity onPress={() => setSpeedMode('slow')} activeOpacity={0.8} style={[styles.speedPillBar, speedMode === 'slow' && styles.speedPillBarActive]}>
-              <Text style={[styles.speedTextBar, speedMode === 'slow' && styles.speedTextBarActive]}>Yavaş</Text>
+            <Text style={[styles.speedTextBar, speedMode === 'slow' && styles.speedTextBarActive]}>Slow</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setSpeedMode('medium')} activeOpacity={0.8} style={[styles.speedPillBar, speedMode === 'medium' && styles.speedPillBarActive]}>
-              <Text style={[styles.speedTextBar, speedMode === 'medium' && styles.speedTextBarActive]}>Orta</Text>
+            <Text style={[styles.speedTextBar, speedMode === 'medium' && styles.speedTextBarActive]}>Medium</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setSpeedMode('fast')} activeOpacity={0.8} style={[styles.speedPillBar, speedMode === 'fast' && styles.speedPillBarActive]}>
-              <Text style={[styles.speedTextBar, speedMode === 'fast' && styles.speedTextBarActive]}>Hızlı</Text>
+            <Text style={[styles.speedTextBar, speedMode === 'fast' && styles.speedTextBarActive]}>Fast</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.skipFab} onPress={skipText}>
-            <Text style={styles.skipFabText}>Hızlı Geç</Text>
+            <Text style={styles.skipFabText}>Skip</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -709,7 +733,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 12,
+    bottom: 22,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',

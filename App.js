@@ -40,7 +40,7 @@ export default function App() {
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
-          options={{ title: 'Ayarlar' }}
+          options={{ headerShown: false }}
         />
         </Stack.Navigator>
         </NavigationContainer>

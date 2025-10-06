@@ -2,13 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, ImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, ImageBackground, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LobbyScreen({ route, navigation }) {
   const { socket, roomCode, username, isHost, capacity, room } = route.params;
   const [players, setPlayers] = useState(room?.players || []);
   const [gameStarted, setGameStarted] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [showChat, setShowChat] = useState(false);
   // Home (splash) ekranındaki görsel ile aynı BG
   const BG_URL = 'https://img.freepik.com/free-photo/halloween-day-celebration-with-costume_23-2151880079.jpg?semt=ais_hybrid&w=740&q=80';
 
@@ -64,6 +67,15 @@ export default function LobbyScreen({ route, navigation }) {
     socket.emit('startGame', { roomCode });
   };
 
+  const sendChat = () => {
+    const text = chatInput.trim();
+    if (!text) return;
+    const msg = { id: `${Date.now()}-${Math.random()}`, user: username, text, time: new Date().toLocaleTimeString() };
+    setMessages(prev => [...prev, msg]);
+    try { socket.emit('lobbyChat', { roomCode, user: username, text: msg.text, time: msg.time }); } catch {}
+    setChatInput('');
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <StatusBar style="light" hidden={true} />
@@ -71,7 +83,7 @@ export default function LobbyScreen({ route, navigation }) {
         <View style={styles.bgOverlay} />
         {/* Fixed Back Button */}
         <TouchableOpacity style={styles.headerBackButton} onPress={() => {
-          Alert.alert('Emin misin?', 'Lobiden çıkmak istiyor musun?', [
+          Alert.alert('Are you sure?', 'Do you want to leave the lobby?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Confirm', style: 'destructive', onPress: () => navigation.goBack() },
           ]);
@@ -81,14 +93,14 @@ export default function LobbyScreen({ route, navigation }) {
         <View style={styles.pageContent}>
         <View style={styles.lobbyCard}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Lobby</Text>
+            <Text style={styles.cardTitle}>Lobby</Text>
           <View style={styles.codeChip}>
             <Ionicons name="key-outline" size={14} color="#c7c9cc" />
             <Text style={styles.codeText}>{roomCode}</Text>
           </View>
         </View>
 
-        <Text style={styles.subtitle}>Oyuncular ({players.length}{(capacity || route.params?.capacity) ? ` / ${capacity || route.params?.capacity}` : ''})</Text>
+        <Text style={styles.subtitle}>Players ({players.length}{(capacity || route.params?.capacity) ? ` / ${capacity || route.params?.capacity}` : ''})</Text>
 
         <FlatList
           data={players}
@@ -115,22 +127,68 @@ export default function LobbyScreen({ route, navigation }) {
         />
         </View>
 
-        {isHost ? (
+      {isHost ? (
           <TouchableOpacity 
             style={[styles.button, (((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) && styles.buttonDisabled]}
             onPress={startGame}
             disabled={((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)}
           >
             <Text style={styles.buttonText}>
-              {(((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) ? 'Yeterli oyuncu bekleniyor' : 'Oyunu Başlat'}
+            {(((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) ? 'Waiting for players' : 'Start Game'}
             </Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.waitingBox}>
             <Ionicons name="timer-outline" size={16} color="#9aa0a6" style={{ marginRight: 8 }} />
-            <Text style={styles.waitingText}>Host oyunu başlatacak...</Text>
+          <Text style={styles.waitingText}>Host will start the game...</Text>
           </View>
         )}
+
+        {/* Chat FAB */}
+        <TouchableOpacity style={styles.chatFab} onPress={() => setShowChat(true)}>
+          <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+        </TouchableOpacity>
+
+        {/* Lobby Chat Modal/Panel */}
+        <Modal visible={showChat} animationType="slide" transparent onRequestClose={() => setShowChat(false)}>
+          <View style={styles.chatOverlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.chatPanel}>
+              <View style={styles.chatPanelHeader}>
+                <Text style={styles.chatTitle}>Lobby Chat</Text>
+                <TouchableOpacity onPress={() => setShowChat(false)}>
+                  <Ionicons name="close" size={22} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              <FlatList
+                data={messages}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingBottom: 12, paddingHorizontal: 12 }}
+                style={styles.chatList}
+                renderItem={({ item }) => (
+                  <View style={styles.msgRow}>
+                    <Text style={styles.msgUser}>{item.user}:</Text>
+                    <Text style={styles.msgText}>{item.text}</Text>
+                    <Text style={styles.msgTime}>{item.time}</Text>
+                  </View>
+                )}
+              />
+              <View style={[styles.chatInputRow, { paddingHorizontal: 12, paddingBottom: 12 }]}>
+                <TextInput
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                  placeholder="Type a message"
+                  placeholderTextColor="#9aa0a6"
+                  style={styles.chatInput}
+                  onSubmitEditing={sendChat}
+                  returnKeyType="send"
+                />
+                <TouchableOpacity style={styles.chatSendBtn} onPress={sendChat}>
+                  <Ionicons name="send" size={18} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
 
         </View>
       </ImageBackground>
@@ -150,6 +208,45 @@ const styles = StyleSheet.create({
   pageContent: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  chatCard: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    marginTop: 12,
+  },
+  chatTitle: {
+    color: '#f1f3f4',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  chatList: { maxHeight: 160 },
+  msgRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 6, flexWrap: 'wrap' },
+  msgUser: { color: '#d0d6ff', fontWeight: '700', marginRight: 6 },
+  msgText: { color: '#e8eaed', flexShrink: 1 },
+  msgTime: { color: 'rgba(255,255,255,0.5)', fontSize: 10, marginLeft: 6 },
+  chatInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  chatInput: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#e8eaed',
+  },
+  chatSendBtn: {
+    backgroundColor: '#6c5ce7',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(108, 92, 231, 0.4)'
   },
   bgOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -297,6 +394,39 @@ const styles = StyleSheet.create({
     color: '#9aa0a6',
     fontSize: 13,
     textAlign: 'center',
+  },
+  chatFab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    backgroundColor: '#6c5ce7',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(108, 92, 231, 0.5)'
+  },
+  chatOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  chatPanel: {
+    backgroundColor: '#202124',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    minHeight: '50%',
+  },
+  chatPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
   },
   headerBackButton: {
     position: 'absolute',

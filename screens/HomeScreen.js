@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import { playHome, stopHome } from '../shared/AudioManager';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { Alert, Animated, ImageBackground, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import io from 'socket.io-client';
+import { SettingsContext } from '../shared/SettingsContext';
 
 const SOCKET_URL = 'https://nyx-backend-production.up.railway.app';
 const BG_URL = 'https://img.freepik.com/free-photo/halloween-day-celebration-with-costume_23-2151880079.jpg?semt=ais_hybrid&w=740&q=80';
@@ -12,6 +14,7 @@ const CREATE_BG = 'https://img.freepik.com/free-photo/door-stretching-into-fanta
 const JOIN_BG = 'https://w0.peakpx.com/wallpaper/240/814/HD-wallpaper-journey-with-little-friend-fantasy-artist-artwork-digital-art.jpg';
 
 export default function HomeScreen({ navigation }) {
+  const { musicEnabled } = useContext(SettingsContext);
   const [username, setUsername] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [capacity, setCapacity] = useState(1); // Geçici olarak tek kişilik test için
@@ -25,6 +28,7 @@ export default function HomeScreen({ navigation }) {
   const [expanding, setExpanding] = useState(null);
   const [expandScale] = useState(new Animated.Value(1));
   const [expandOpacity] = useState(new Animated.Value(0));
+  const homeSoundRef = React.useRef(null); // deprecated, using AudioManager
 
   const createRoom = async () => {
     if (!username.trim()) {
@@ -194,8 +198,23 @@ export default function HomeScreen({ navigation }) {
         ])
       );
       pulseAnimation.start();
+
+      // fog removed
     }
   }, [showSplash]);
+
+// Keep home music across screens; only play while splash or non-Game screens
+React.useEffect(() => {
+  const run = async () => {
+    if (musicEnabled) {
+      await playHome();
+    } else {
+      await stopHome();
+    }
+  };
+  run();
+  return () => {};
+}, [musicEnabled]);
 
   if (showSplash) {
     return (
@@ -203,6 +222,7 @@ export default function HomeScreen({ navigation }) {
         <StatusBar style="light" hidden={true} />
         <ImageBackground source={{ uri: BG_URL }} resizeMode="cover" style={styles.bg}>
           <View style={styles.bgOverlay} />
+          {/* fog removed */}
           
           {/* Settings Button */}
           <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
@@ -229,7 +249,7 @@ export default function HomeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <StatusBar style="light" hidden={true} />
-      <ImageBackground source={{ uri: BG_URL }} resizeMode="cover" style={styles.bg}>
+      <ImageBackground source={{ uri: BG_URL }} resizeMode="cover" style={styles.bg} blurRadius={showForm ? 6 : 0}>
         <View style={styles.bgOverlay} />
 
         {/* Fixed Back Button (kart sahnesinde) */}
@@ -405,6 +425,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)'
   },
+  // fog removed
   splashContent: {
     flex: 1,
     justifyContent: 'center',
@@ -530,16 +551,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   formContainer: {
-    backgroundColor: 'rgba(32, 33, 36, 0.9)',
-    borderRadius: 24,
-    padding: 24,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 18,
+    padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255,255,255,0.12)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 10,
   },
   inputGroup: {
     marginBottom: 24,
@@ -553,12 +574,12 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   input: {
     flex: 1,
@@ -596,14 +617,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(108, 92, 231, 0.5)',
     shadowColor: '#6c5ce7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 10,
   },
   submitButtonDisabled: {
     backgroundColor: '#4a4a4a',
