@@ -1,14 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { playHome, stopHome } from '../shared/AudioManager';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { useContext, useState } from 'react';
-import { Alert, Animated, ImageBackground, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ImageBackground, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import io from 'socket.io-client';
+import { playHome, stopHome } from '../shared/AudioManager';
 import { SettingsContext } from '../shared/SettingsContext';
 
-const SOCKET_URL = 'https://nyx-backend-production.up.railway.app';
+// Not: Telefon/Expo Go için localhost çalışmaz. Mac'in yerel IP'sini kullan.
+// IP'ni öğren: `ipconfig getifaddr en0` (Wi‑Fi)
+const SOCKET_URL = Platform.select({
+  web: 'http://localhost:3002',
+  default: 'http://192.168.1.115:3002', // BURAYI kendi Mac IP'n ile değiştir
+});
 const BG_URL = 'https://img.freepik.com/free-photo/halloween-day-celebration-with-costume_23-2151880079.jpg?semt=ais_hybrid&w=740&q=80';
 const CREATE_BG = 'https://img.freepik.com/free-photo/door-stretching-into-fantasy-world_23-2151661272.jpg?semt=ais_incoming&w=740&q=80';
 const JOIN_BG = 'https://w0.peakpx.com/wallpaper/240/814/HD-wallpaper-journey-with-little-friend-fantasy-artist-artwork-digital-art.jpg';

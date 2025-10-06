@@ -12,6 +12,9 @@ export default function LobbyScreen({ route, navigation }) {
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState([]);
   const [showChat, setShowChat] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [readyInfo, setReadyInfo] = useState({ ready: 0, total: (capacity || room?.players?.length || 0) });
+  const [countdown, setCountdown] = useState(null);
   // Home (splash) ekranındaki görsel ile aynı BG
   const BG_URL = 'https://img.freepik.com/free-photo/halloween-day-celebration-with-costume_23-2151880079.jpg?semt=ais_hybrid&w=740&q=80';
 
@@ -32,6 +35,19 @@ export default function LobbyScreen({ route, navigation }) {
     
     socket.on('disconnect', () => {
       console.log('LobbyScreen: Socket disconnected for', username);
+    });
+    socket.on('readyUpdate', ({ ready, total }) => {
+      setReadyInfo({ ready, total });
+    });
+
+    socket.on('kicked', () => {
+      Alert.alert('Removed', 'You were removed by the host.', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
+    });
+
+    socket.on('countdown', ({ seconds }) => {
+      setCountdown(seconds);
     });
     
     socket.on('playerJoined', ({ room }) => {
@@ -58,6 +74,9 @@ export default function LobbyScreen({ route, navigation }) {
       socket.off('gameStarted');
       socket.off('connect');
       socket.off('disconnect');
+      socket.off('readyUpdate');
+      socket.off('countdown');
+      socket.off('kicked');
     };
   }, []);
 
@@ -76,6 +95,12 @@ export default function LobbyScreen({ route, navigation }) {
     setChatInput('');
   };
 
+  const toggleReady = () => {
+    const next = !isReady;
+    setIsReady(next);
+    try { socket.emit('ready', { roomCode, ready: next }); } catch {}
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <StatusBar style="light" hidden={true} />
@@ -85,7 +110,7 @@ export default function LobbyScreen({ route, navigation }) {
         <TouchableOpacity style={styles.headerBackButton} onPress={() => {
           Alert.alert('Are you sure?', 'Do you want to leave the lobby?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Confirm', style: 'destructive', onPress: () => navigation.goBack() },
+            { text: 'Confirm', style: 'destructive', onPress: () => { try { socket.emit('leaveRoom', { roomCode }); } catch(e){}; navigation.goBack(); } },
           ]);
         }}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -100,7 +125,7 @@ export default function LobbyScreen({ route, navigation }) {
           </View>
         </View>
 
-        <Text style={styles.subtitle}>Players ({players.length}{(capacity || route.params?.capacity) ? ` / ${capacity || route.params?.capacity}` : ''})</Text>
+        <Text style={styles.subtitle}>Players ({players.length}{(capacity || route.params?.capacity) ? ` / ${capacity || route.params?.capacity}` : ''}) • Ready {readyInfo.ready}/{readyInfo.total}</Text>
 
         <FlatList
           data={players}
@@ -121,6 +146,19 @@ export default function LobbyScreen({ route, navigation }) {
                     <Text style={styles.hostBadge}>HOST</Text>
                   </View>
                 )}
+                {!isHostItem && isHost && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert('Kick player?', `Remove ${item.username} from lobby?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Kick', style: 'destructive', onPress: () => socket.emit('kick', { roomCode, targetId: item.id }) }
+                      ]);
+                    }}
+                    style={styles.kickBtn}
+                  >
+                    <Ionicons name="close-circle" size={18} color="#ff6b6b" />
+                  </TouchableOpacity>
+                )}
               </View>
             );
           }}
@@ -129,12 +167,12 @@ export default function LobbyScreen({ route, navigation }) {
 
       {isHost ? (
           <TouchableOpacity 
-            style={[styles.button, (((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) && styles.buttonDisabled]}
+            style={[styles.button, (countdown !== null || (((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2))) && styles.buttonDisabled]}
             onPress={startGame}
-            disabled={((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)}
+            disabled={countdown !== null || ((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)}
           >
             <Text style={styles.buttonText}>
-            {(((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) ? 'Waiting for players' : 'Start Game'}
+              {countdown !== null ? `Starting in ${countdown}` : ((((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) ? 'Waiting for players' : 'Start Game')}
             </Text>
           </TouchableOpacity>
         ) : (
@@ -142,6 +180,13 @@ export default function LobbyScreen({ route, navigation }) {
             <Ionicons name="timer-outline" size={16} color="#9aa0a6" style={{ marginRight: 8 }} />
           <Text style={styles.waitingText}>Host will start the game...</Text>
           </View>
+        )}
+
+        {/* Ready toggle - only for non-host players */}
+        {!isHost && (
+          <TouchableOpacity style={[styles.readyBtn, isReady && styles.readyBtnOn]} onPress={toggleReady}>
+            <Text style={[styles.readyText, isReady && styles.readyTextOn]}>{isReady ? 'Ready ✓' : 'I\'m Ready'}</Text>
+          </TouchableOpacity>
         )}
 
         {/* Chat FAB */}
@@ -384,6 +429,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
+  kickBtn: { marginLeft: -20, marginRight: 10 },
   waitingBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -439,5 +485,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-  }
+  },
+  readyBtn: {
+    marginTop: 10,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(108, 92, 231, 0.5)',
+    backgroundColor: 'rgba(108, 92, 231, 0.15)'
+  },
+  readyBtnOn: {
+    backgroundColor: 'rgba(108, 92, 231, 0.35)'
+  },
+  readyText: { color: '#d6d9ff', fontWeight: '800' },
+  readyTextOn: { color: '#fff' }
 });

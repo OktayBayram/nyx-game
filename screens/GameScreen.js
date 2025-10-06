@@ -2,11 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { memo, useContext, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Easing, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { playGame, stopGame, stopHome, playHome } from '../shared/AudioManager';
+import { Alert, Animated, Easing, ImageBackground, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import storyData from '../assets/story.json';
 import { AchievementsContext } from '../shared/AchievementsContext';
+import { playGame, playHome, stopGame, stopHome } from '../shared/AudioManager';
 import { SettingsContext } from '../shared/SettingsContext';
 
 // Memoized Text component - blink önleme
@@ -19,6 +19,7 @@ export default function GameScreen({ route, navigation }) {
   const [currentPassage, setCurrentPassage] = useState('Uyanış');
   const [voted, setVoted] = useState(false);
   const [voteCount, setVoteCount] = useState({ votes: 0, total: 0 });
+  const voteCountRef = useRef({ votes: 0, total: 0 });
   const [selectedChoice, setSelectedChoice] = useState(null);
   const [votersByChoice, setVotersByChoice] = useState({});
   const [typedText, setTypedText] = useState('');
@@ -61,14 +62,9 @@ export default function GameScreen({ route, navigation }) {
     console.log('GameScreen: Socket connected?', socket.connected);
     socket.on('voteUpdate', ({ votes, total, votersByChoice: votersMap }) => {
       console.log('voteUpdate received:', { votes, total, votersMap });
-      // setVoteCount({ votes, total }); // Gizlendi - blink önleme
-      // if (votersMap) setVotersByChoice(votersMap); // Gizlendi - blink önleme
-      // Animated.timing(progressAnim, { // Gizlendi - blink önleme
-      //   toValue: total > 0 ? votes / total : 0,
-      //   duration: 300,
-      //   easing: Easing.out(Easing.cubic),
-      //   useNativeDriver: false,
-      // }).start();
+      setVoteCount({ votes, total });
+      voteCountRef.current = { votes, total };
+      if (votersMap) setVotersByChoice(votersMap);
     });
 
 
@@ -380,7 +376,7 @@ export default function GameScreen({ route, navigation }) {
       <ScrollView
         ref={scrollViewRef}
         style={styles.storyContainer}
-        contentContainerStyle={{ paddingBottom: bottomBarHeight + (insets?.bottom || 0) + 32, paddingTop: 0 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: bottomBarHeight + (insets?.bottom || 0) + 32, paddingTop: 0 }}
         showsVerticalScrollIndicator={true}
         scrollEventThrottle={16}
         onScrollBeginDrag={() => {
@@ -397,17 +393,36 @@ export default function GameScreen({ route, navigation }) {
             </Text>
           )}
         </Text>
+        {Platform.OS === 'web' && showChoices && (
+          <View style={styles.choicesContainer}>
+            {passage?.links.map((link, index) => {
+              const isSelected = selectedChoice === link.target;
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.choiceButton, voted && styles.choiceButtonDisabled, isSelected && styles.choiceSelected]}
+                  onPress={() => vote(link.target)}
+                  disabled={voted}
+                >
+                  <Text style={[styles.choiceText, isSelected && styles.choiceTextSelected]}>
+                    {decodeHtmlEntities(link.text)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
         {/* Alt çubuğun altında kalmaması için ekstra spacer */}
         {showSkipButton && <View style={{ height: bottomBarHeight + (insets?.bottom || 0) + 16 }} />}
       </ScrollView>
 
-      {/* Progress bar gizlendi - blink önleme */}
-      {false && voteCount.total > 0 && (
-        <View style={styles.progressBox}>
+      {/* Voting progress - above bottom controls */}
+      {voteCount.total > 0 && (
+        <View style={[styles.progressBox, { position: 'absolute', left: 20, right: 20, bottom: (bottomBarHeight || 56) + (insets?.bottom || 0) + 8 }]}>
           <View style={styles.progressTrack}>
-            <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+            <Animated.View style={[styles.progressFill, { width: `${Math.round((voteCount.votes / voteCount.total) * 100)}%` }]} />
           </View>
-          <Text style={styles.progressLabel}>Oylar: {voteCount.votes} / {voteCount.total}</Text>
+          <Text style={styles.progressLabel}>Votes: {voteCount.votes} / {voteCount.total}</Text>
         </View>
       )}
 
@@ -431,7 +446,7 @@ export default function GameScreen({ route, navigation }) {
         </View>
       )}
 
-      {showChoices && (
+      {Platform.OS !== 'web' && showChoices && (
         <View style={styles.choicesContainer}>
           {passage?.links.map((link, index) => {
             const isSelected = selectedChoice === link.target;
