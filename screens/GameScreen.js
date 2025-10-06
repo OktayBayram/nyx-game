@@ -498,6 +498,8 @@ const styles = StyleSheet.create({
   storyContainer: {
     flex: 1,
     padding: 20,
+    overflow: 'auto',
+    height: '100%',
   },
   storyText: {
     fontSize: 16,

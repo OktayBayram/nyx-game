@@ -11,7 +11,7 @@ import { SettingsContext } from '../shared/SettingsContext';
 // Not: Telefon/Expo Go için localhost çalışmaz. Mac'in yerel IP'sini kullan.
 // IP'ni öğren: `ipconfig getifaddr en0` (Wi‑Fi)
 const SOCKET_URL = Platform.select({
-  web: 'http://localhost:3002',
+  web: 'https://nyx-backend-production.up.railway.app',
   default: 'http://192.168.1.115:3002', // BURAYI kendi Mac IP'n ile değiştir
 });
 const BG_URL = 'https://img.freepik.com/free-photo/halloween-day-celebration-with-costume_23-2151880079.jpg?semt=ais_hybrid&w=740&q=80';
