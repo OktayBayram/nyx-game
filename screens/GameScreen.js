@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { memo, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import storyData from '../assets/story.json';
 import { AchievementsContext } from '../shared/AchievementsContext';
 import { SettingsContext } from '../shared/SettingsContext';
@@ -29,11 +29,17 @@ export default function GameScreen({ route }) {
   const [showTyping, setShowTyping] = useState(false); // "Yazıyor" animasyonu
   const [typingAnimation, setTypingAnimation] = useState(0); // Animasyon durumu
   const [messageCount, setMessageCount] = useState(0); // Mesaj sayacı
+  const [lastChoiceHeight, setLastChoiceHeight] = useState(0); // Sarı rozet yüksekliği
+  const [bottomBarHeight, setBottomBarHeight] = useState(0); // Alt çubuk yüksekliği
   const isSkippedRef = useRef(false); // Skip durumu - ref ile
   const { typeSpeedMs, setTypeSpeedMs } = useContext(SettingsContext);
+  const [speedMode, setSpeedMode] = useState('medium'); // 'slow' | 'medium' | 'fast'
+  const speedModeRef = useRef('medium');
+  useEffect(() => { speedModeRef.current = speedMode; }, [speedMode]);
   const { addAchievement } = useContext(AchievementsContext);
   const typerRef = useRef(null);
   const scrollViewRef = useRef(null);
+  const insets = useSafeAreaInsets();
   const [textOpacity, setTextOpacity] = useState(0.3);
   const currentTextRef = useRef('');
   const isTypingRef = useRef(false);
@@ -72,6 +78,8 @@ export default function GameScreen({ route }) {
       if (achievement?.key) {
         addAchievement(achievement.key, achievement.label);
       }
+      // Sağ üst rozete kazanan seçimi yaz (decode edilmiş)
+      if (choice) setLastChoice(decodeHtmlEntities(choice));
       
       // Kazanan seçimi geçmişe ekle (WhatsApp gibi) - tırnak işareti olmadan
       const choiceMessage = {
@@ -172,78 +180,103 @@ export default function GameScreen({ route }) {
     setShowSkipButton(true);
     isTypingRef.current = true;
     
-    // "Yazıyor" animasyonu - WhatsApp gibi
-    setShowTyping(true);
+    // "Yazıyor" animasyonu sadece özel duraklama anlarında gösterilecek
+    setShowTyping(false);
     setShowChoices(false);
     setShowSkipButton(true);
     isSkippedRef.current = false; // Her yeni pasajda reset
-    setLastChoice(null); // Önceki seçimi temizle
     
-    // Animasyon başlat - hızlı yanma
-    let animCount = 0;
-    const animateTyping = () => {
-      if (showTyping) {
-        setTypingAnimation(animCount % 3);
-        animCount++;
-        setTimeout(animateTyping, 500); // Daha yavaş
-      }
-    };
-    animateTyping();
+    // Üç nokta animasyonu bu effectte değil, showTyping'e bağlı ayrı effectte yönetilecek
     
-    // Cümle cümle bubble'lar oluştur
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    let sentenceIndex = 0;
-    
-    const showNextSentence = () => {
-      // Skip edildiyse dur
+    // Doğal paragraf akışı: boşlukları ve satır sonlarını KORUYARAK token bazlı yazım
+    const tokens = text.match(/\s+|\S+/g) || [];
+    let tokenIndex = 0;
+
+    const typeNextToken = () => {
       if (isSkippedRef.current) return;
-      
-      if (sentenceIndex < sentences.length) {
-        // Emoji kaldırıldı
-        const sentence = sentences[sentenceIndex].trim();
-        
-        const newMessages = [{
-          id: `${currentPassage}-${sentenceIndex}-${Date.now()}-${Math.random()}`,
-          title: sentenceIndex === 0 ? currentPassage : '',
-          content: sentence,
-          timestamp: new Date().toLocaleTimeString(),
-          isSystemMessage: true
-        }];
-        
-        setPassageHistory(prev => [...prev, ...newMessages]);
-        sentenceIndex++;
-        
+
+      if (tokenIndex < tokens.length) {
+        const token = tokens[tokenIndex];
+        const tokenTrim = token.trim();
+
+        // Eğer tek başına "..." ya da "…" ise: animasyonu göster, 3.5s bekle, yazmaya devam et
+        if (tokenTrim === '...' || tokenTrim === '…') {
+          setShowTyping(true);
+          setTimeout(() => {
+            setShowTyping(false);
+            tokenIndex++; // '...' karakterlerini ekrana yazmadan atla
+            // '...' sonrasında gelen tek newline'ı da yutarak ekstra boş satırı engelle
+            const nextToken = tokens[tokenIndex];
+            if (nextToken && /\n/.test(nextToken)) {
+              tokenIndex++;
+            }
+            setTimeout(typeNextToken, 0);
+          }, 3500);
+          return;
+        }
+
+        setDisplayText(prev => (prev || '') + token);
+        tokenIndex++;
+
         // Scroll to bottom
         if (scrollViewRef.current) {
           setTimeout(() => {
             if (scrollViewRef.current) {
               scrollViewRef.current.scrollToEnd({ animated: true });
             }
-          }, 100);
+          }, 50);
         }
-        
-        // Sonraki cümle için delay - ortalama insan yazışı
-        if (!isSkippedRef.current) {
-          const currentSentence = sentences[sentenceIndex - 1].trim();
-          const wordCount = currentSentence.split(' ').length;
-          const delay = Math.max(2000, wordCount * 800); // Ortalama insan yazışı: kelime başına 800ms, minimum 2s
-          setTimeout(showNextSentence, delay);
-        }
+
+        // Ortalama insan yazışı: kelime/karakter temposu
+        const isSpace = /\s+/.test(token);
+        const baseRaw = isSpace ? 10 : 45; // boşluklar daha hızlı
+        const mode = speedModeRef.current;
+        const factor = mode === 'slow' ? 1.8 : mode === 'fast' ? 0.5 : 1.0;
+        const base = Math.max(1, Math.round(baseRaw * factor));
+        setTimeout(typeNextToken, base);
       } else {
-        // Tüm cümleler tamamlandı
         setShowTyping(false);
         setShowChoices(true);
         setShowSkipButton(false);
       }
     };
     
-    // İlk cümleyi göster
-    setTimeout(showNextSentence, 2000);
+    // Yazımı başlat: her pasaj başında kısa bir "yazıyor" beklemesi
+    // İlk anlamlı token '...' ise, onun akışı zaten özel bekleme yapacak; aksi halde kısa intro beklemesi uygula
+    const firstNonWsIndex = tokens.findIndex(t => t.trim().length > 0);
+    const firstNonWsIsDots = firstNonWsIndex >= 0 && (tokens[firstNonWsIndex].trim() === '...' || tokens[firstNonWsIndex].trim() === '…');
+    if (!firstNonWsIsDots) {
+      setShowTyping(true);
+      setTimeout(() => {
+        setShowTyping(false);
+        typeNextToken();
+      }, 800);
+    } else {
+      setTimeout(typeNextToken, 500);
+    }
     return () => {
       isTypingRef.current = false;
       setShowSkipButton(false);
     };
   }, [currentPassage]);
+
+  // Üç nokta animasyonu: showTyping açıkken sırayla yanacak şekilde döngü
+  useEffect(() => {
+    if (!showTyping) return;
+    let isActive = true;
+    let timer;
+    const tick = () => {
+      if (!isActive) return;
+      setTypingAnimation((prev) => (prev + 1) % 3);
+      timer = setTimeout(tick, 600); // tercih edilen hız
+    };
+    // hemen başlat
+    timer = setTimeout(tick, 0);
+    return () => {
+      isActive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [showTyping]);
 
   // Skip text function
   const skipText = () => {
@@ -255,16 +288,9 @@ export default function GameScreen({ route }) {
       setShowSkipButton(false);
       setShowChoices(true);
       
-      // Tüm cümleleri hemen göster
+      // Tüm metni tek konteynerde hemen göster (paragrafları KORU)
       const fullText = decodeHtmlEntities(passage?.content || '');
-      const sentences = fullText.split(/[.!?]+/).filter(s => s.trim().length > 0);
-      const newMessages = sentences.map((sentence, index) => ({
-        id: `${currentPassage}-${index}-${Date.now()}-${Math.random()}`,
-        title: index === 0 ? currentPassage : '',
-        content: sentence.trim(),
-        timestamp: new Date().toLocaleTimeString()
-      }));
-      setPassageHistory(prev => [...prev, ...newMessages]);
+      setDisplayText(fullText);
       
       // Scroll to bottom - WhatsApp gibi
       if (scrollViewRef.current) {
@@ -301,60 +327,40 @@ export default function GameScreen({ route }) {
       <ImageBackground source={{ uri: bgImage }} style={styles.bg} resizeMode="cover">
         <View style={[styles.bgTint, { backgroundColor: 'rgba(0,0,0,0.85)' }]} pointerEvents="none" />
 
-      <View style={styles.headerRow}>
-        <Text style={styles.passageTitle}>{currentPassage}</Text>
-      </View>
+      {/* Başlık kaldırıldı */}
 
-      {/* Chat geçmişi - mesaj kutusu gibi */}
-      <ScrollView 
+      {lastChoice && (
+        <View style={styles.lastChoicePill} onLayout={(e) => setLastChoiceHeight(e.nativeEvent.layout.height)}>
+          <Text style={styles.lastChoiceText}>{lastChoice}</Text>
+        </View>
+      )}
+
+      {/* Scroll alanı için sabit üst boşluk (scroll dışı), rozet altına tampon */}
+      {lastChoice && <View pointerEvents="none" style={{ height: lastChoiceHeight + 12 }} />}
+
+      {/* Tek konteyner hikaye görünümü */}
+      <ScrollView
         ref={scrollViewRef}
-        style={styles.chatContainer}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        style={styles.storyContainer}
+        contentContainerStyle={{ paddingBottom: bottomBarHeight + (insets?.bottom || 0) + 32, paddingTop: 0 }}
         showsVerticalScrollIndicator={true}
         scrollEventThrottle={16}
         onScrollBeginDrag={() => {
-          // Kullanıcı scroll etmeye başladığında otomatik scroll'u durdur
           isTypingRef.current = false;
         }}
       >
-        {/* Geçmiş cümleler - sıralı */}
-        {passageHistory.map((item, index) => {
-          // Sistem mesajlarında kullanıcı seçimini filtrele
-          if (item.isUserChoice) {
-            return (
-              <View key={item.id} style={[styles.messageBubble, styles.choiceMessage]}>
-                <Text style={styles.messageContent}>{item.content}</Text>
-                <Text style={styles.messageTime}>{item.timestamp}</Text>
-              </View>
-            );
-          } else {
-            return (
-              <View key={item.id} style={[styles.messageBubble, styles.currentMessage]}>
-                <Text style={styles.messageContent}>{item.content}</Text>
-                <Text style={styles.messageTime}>{item.timestamp}</Text>
-              </View>
-            );
-          }
-        })}
-        
-        {/* Kullanıcı seçimi - sarı bubble */}
-        {lastChoice && (
-          <View style={[styles.messageBubble, styles.choiceMessage]}>
-            <Text style={styles.messageContent}>{lastChoice}</Text>
-            <Text style={styles.messageTime}>{new Date().toLocaleTimeString()}</Text>
-          </View>
-        )}
-        
-        {/* Animasyonlu 3 nokta - WhatsApp gibi */}
-        {showTyping && (
-          <View style={[styles.messageBubble, styles.typingMessage]}>
-            <View style={styles.typingDots}>
+        <Text style={styles.storyText}>
+          {displayText}
+          {showTyping && (
+            <Text>
               <Text style={[styles.typingDot, { opacity: typingAnimation === 0 ? 1 : 0.3 }]}>.</Text>
               <Text style={[styles.typingDot, { opacity: typingAnimation === 1 ? 1 : 0.3 }]}>.</Text>
               <Text style={[styles.typingDot, { opacity: typingAnimation === 2 ? 1 : 0.3 }]}>.</Text>
-            </View>
-          </View>
-        )}
+            </Text>
+          )}
+        </Text>
+        {/* Alt çubuğun altında kalmaması için ekstra spacer */}
+        {showSkipButton && <View style={{ height: bottomBarHeight + (insets?.bottom || 0) + 16 }} />}
       </ScrollView>
 
       {/* Progress bar gizlendi - blink önleme */}
@@ -369,9 +375,20 @@ export default function GameScreen({ route }) {
 
       {/* Skip Button */}
       {showSkipButton && (
-        <View style={styles.skipContainer}>
-          <TouchableOpacity style={styles.skipButton} onPress={skipText}>
-            <Text style={styles.skipButtonText}>Hızlı Geç</Text>
+        <View style={styles.bottomBar} onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}>
+          <View style={styles.speedRowBar}>
+            <TouchableOpacity onPress={() => setSpeedMode('slow')} activeOpacity={0.8} style={[styles.speedPillBar, speedMode === 'slow' && styles.speedPillBarActive]}>
+              <Text style={[styles.speedTextBar, speedMode === 'slow' && styles.speedTextBarActive]}>Yavaş</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setSpeedMode('medium')} activeOpacity={0.8} style={[styles.speedPillBar, speedMode === 'medium' && styles.speedPillBarActive]}>
+              <Text style={[styles.speedTextBar, speedMode === 'medium' && styles.speedTextBarActive]}>Orta</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setSpeedMode('fast')} activeOpacity={0.8} style={[styles.speedPillBar, speedMode === 'fast' && styles.speedPillBarActive]}>
+              <Text style={[styles.speedTextBar, speedMode === 'fast' && styles.speedTextBarActive]}>Hızlı</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.skipFab} onPress={skipText}>
+            <Text style={styles.skipFabText}>Hızlı Geç</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -674,6 +691,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 20,
   },
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  speedRowBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  speedPillBar: {
+    backgroundColor: 'rgba(32,33,36,0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  speedPillBarActive: {
+    backgroundColor: '#6c5ce7',
+    borderColor: '#6c5ce7',
+  },
+  speedTextBar: {
+    color: '#c7c9cc',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  speedTextBarActive: {
+    color: '#fff',
+  },
+  skipFab: {
+    backgroundColor: 'rgba(108, 92, 231, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(108, 92, 231, 0.5)',
+  },
+  skipFabText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   skipButton: {
     backgroundColor: 'rgba(108, 92, 231, 0.8)',
     paddingHorizontal: 24,
@@ -731,6 +796,24 @@ const styles = StyleSheet.create({
     fontSize: 20,
     marginHorizontal: 2,
     fontWeight: 'bold',
+  },
+  lastChoicePill: {
+    position: 'absolute',
+    top: 8,
+    right: 16,
+    backgroundColor: 'rgba(255, 193, 7, 0.18)',
+    borderColor: '#ffc107',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    zIndex: 10,
+    maxWidth: '70%',
+  },
+  lastChoiceText: {
+    color: '#ffd54f',
+    fontSize: 12,
+    fontWeight: '700',
   },
   messageTitle: {
     color: '#d0d6ff',
