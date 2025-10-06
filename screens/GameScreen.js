@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { memo, useContext, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Easing, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import storyData from '../assets/story.json';
 import { AchievementsContext } from '../shared/AchievementsContext';
@@ -13,7 +13,7 @@ const MemoizedText = memo(({ children, style }) => (
   <Text style={style}>{children}</Text>
 ));
 
-export default function GameScreen({ route }) {
+export default function GameScreen({ route, navigation }) {
   const { socket, roomCode, username } = route.params;
   const [currentPassage, setCurrentPassage] = useState('Uyanış');
   const [voted, setVoted] = useState(false);
@@ -322,12 +322,23 @@ export default function GameScreen({ route }) {
 
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+    <SafeAreaView style={styles.container} edges={[]}>
+      <StatusBar style="light" hidden={true} />
       <ImageBackground source={{ uri: bgImage }} style={styles.bg} resizeMode="cover">
         <View style={[styles.bgTint, { backgroundColor: 'rgba(0,0,0,0.85)' }]} pointerEvents="none" />
 
-      {/* Başlık kaldırıldı */}
+      {/* Geri (Lobby) butonu - onay diyaloglu */}
+      <TouchableOpacity
+        style={styles.headerBackButton}
+        onPress={() => {
+          Alert.alert('Emin misin?', 'Lobiye dönmek istiyor musun?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Confirm', style: 'destructive', onPress: () => navigation.goBack() },
+          ]);
+        }}
+      >
+        <Ionicons name="arrow-back" size={22} color="#fff" />
+      </TouchableOpacity>
 
       {lastChoice && (
         <View style={styles.lastChoicePill} onLayout={(e) => setLastChoiceHeight(e.nativeEvent.layout.height)}>
@@ -335,8 +346,11 @@ export default function GameScreen({ route }) {
         </View>
       )}
 
-      {/* Scroll alanı için sabit üst boşluk (scroll dışı), rozet altına tampon */}
-      {lastChoice && <View pointerEvents="none" style={{ height: lastChoiceHeight + 12 }} />}
+      {/* Scroll alanı için sabit üst boşluk: rozet pozisyonu (68) + yüksekliği + tampon */}
+      <View
+        pointerEvents="none"
+        style={{ height: lastChoice ? (68 + lastChoiceHeight + 16) : 16 }}
+      />
 
       {/* Tek konteyner hikaye görünümü */}
       <ScrollView
@@ -797,9 +811,21 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
     fontWeight: 'bold',
   },
+  headerBackButton: {
+    position: 'absolute',
+    top: 20,
+    left: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    zIndex: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   lastChoicePill: {
     position: 'absolute',
-    top: 8,
+    top: 68,
     right: 16,
     backgroundColor: 'rgba(255, 193, 7, 0.18)',
     borderColor: '#ffc107',

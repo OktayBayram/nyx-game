@@ -5,8 +5,8 @@ import GameScreen from './screens/GameScreen';
 import HomeScreen from './screens/HomeScreen';
 import LobbyScreen from './screens/LobbyScreen';
 import SettingsScreen from './screens/SettingsScreen';
-import { SettingsProvider } from './shared/SettingsContext';
 import { AchievementsProvider } from './shared/AchievementsContext';
+import { SettingsProvider } from './shared/SettingsContext';
 
 const Stack = createStackNavigator();
 
@@ -30,12 +30,12 @@ export default function App() {
         <Stack.Screen 
           name="Lobby" 
           component={LobbyScreen}
-          options={{ title: 'Lobby' }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen 
           name="Game" 
           component={GameScreen}
-          options={{ title: 'Oyun' }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="Settings"

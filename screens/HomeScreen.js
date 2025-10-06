@@ -232,6 +232,25 @@ export default function HomeScreen({ navigation }) {
       <ImageBackground source={{ uri: BG_URL }} resizeMode="cover" style={styles.bg}>
         <View style={styles.bgOverlay} />
 
+        {/* Fixed Back Button (kart sahnesinde) */}
+        {!showForm && (
+          <TouchableOpacity style={styles.headerBackButton} onPress={() => {
+            setShowSplash(true);
+            setShowForm(false);
+            setUsername('');
+            setRoomCode('');
+          }}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
+
+        {/* Fixed Back Button (form açıkken) */}
+        {showForm && (
+          <TouchableOpacity style={styles.headerBackButton} onPress={goBack}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
+
         {/* Main Content */}
         <View style={styles.mainContent}>
           {!showForm ? (
@@ -283,12 +302,6 @@ export default function HomeScreen({ navigation }) {
             </>
           ) : (
             <View style={styles.formContent}>
-              {/* Back Button */}
-              <TouchableOpacity style={styles.backButton} onPress={goBack}>
-                <Ionicons name="arrow-back" size={24} color="#fff" />
-                <Text style={styles.backButtonText}>Back</Text>
-              </TouchableOpacity>
-
               {/* Form */}
               <Animated.View style={[styles.formContainer, {
                 opacity: formFadeAnim,
@@ -438,7 +451,7 @@ const styles = StyleSheet.create({
   formContent: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 60,
+    paddingTop: 90,
     paddingBottom: 40,
   },
   cardsContainerFull: {
@@ -610,6 +623,18 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  headerBackButton: {
+    position: 'absolute',
+    top: 20,
+    left: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',

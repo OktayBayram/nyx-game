@@ -2,13 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, ImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LobbyScreen({ route, navigation }) {
   const { socket, roomCode, username, isHost, capacity, room } = route.params;
   const [players, setPlayers] = useState(room?.players || []);
   const [gameStarted, setGameStarted] = useState(false);
+  // Home (splash) ekranındaki görsel ile aynı BG
+  const BG_URL = 'https://img.freepik.com/free-photo/halloween-day-celebration-with-costume_23-2151880079.jpg?semt=ais_hybrid&w=740&q=80';
 
   const colorPalette = useMemo(() => ['#8ab4f8','#f28b82','#fdd663','#81c995','#cf9ef1','#f6a5c0','#78d9ec'], []);
   const colorFor = (name) => {
@@ -63,9 +65,21 @@ export default function LobbyScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
-      <View style={styles.lobbyCard}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <StatusBar style="light" hidden={true} />
+      <ImageBackground source={{ uri: BG_URL }} style={styles.bg} resizeMode="cover" blurRadius={1}>
+        <View style={styles.bgOverlay} />
+        {/* Fixed Back Button */}
+        <TouchableOpacity style={styles.headerBackButton} onPress={() => {
+          Alert.alert('Emin misin?', 'Lobiden çıkmak istiyor musun?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Confirm', style: 'destructive', onPress: () => navigation.goBack() },
+          ]);
+        }}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+        </TouchableOpacity>
+        <View style={styles.pageContent}>
+        <View style={styles.lobbyCard}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>Lobby</Text>
           <View style={styles.codeChip}>
@@ -99,24 +113,27 @@ export default function LobbyScreen({ route, navigation }) {
             );
           }}
         />
-      </View>
-
-      {isHost ? (
-        <TouchableOpacity 
-          style={[styles.button, (((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) && styles.buttonDisabled]}
-          onPress={startGame}
-          disabled={((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)}
-        >
-          <Text style={styles.buttonText}>
-            {(((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) ? 'Yeterli oyuncu bekleniyor' : 'Oyunu Başlat'}
-          </Text>
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.waitingBox}>
-          <Ionicons name="timer-outline" size={16} color="#9aa0a6" style={{ marginRight: 8 }} />
-          <Text style={styles.waitingText}>Host oyunu başlatacak...</Text>
         </View>
-      )}
+
+        {isHost ? (
+          <TouchableOpacity 
+            style={[styles.button, (((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) && styles.buttonDisabled]}
+            onPress={startGame}
+            disabled={((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)}
+          >
+            <Text style={styles.buttonText}>
+              {(((capacity || route.params?.capacity) ? players.length < (capacity || route.params?.capacity) : players.length < 2)) ? 'Yeterli oyuncu bekleniyor' : 'Oyunu Başlat'}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.waitingBox}>
+            <Ionicons name="timer-outline" size={16} color="#9aa0a6" style={{ marginRight: 8 }} />
+            <Text style={styles.waitingText}>Host oyunu başlatacak...</Text>
+          </View>
+        )}
+
+        </View>
+      </ImageBackground>
     </SafeAreaView>
   );
 }
@@ -124,16 +141,32 @@ export default function LobbyScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#1a1a1a',
+    padding: 0,
+    backgroundColor: '#0f1115',
+  },
+  bg: {
+    flex: 1,
+  },
+  pageContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  bgOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)'
   },
   lobbyCard: {
-    backgroundColor: '#202124',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 18,
+    padding: 18,
+    marginTop: 90,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -142,39 +175,47 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   cardTitle: {
-    fontSize: 18,
-    color: '#e8eaed',
-    fontWeight: '700',
+    fontSize: 20,
+    color: '#f1f3f4',
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   codeChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   codeText: {
     color: '#e8eaed',
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '800',
     letterSpacing: 2,
     marginLeft: 6,
   },
   subtitle: {
-    fontSize: 20,
-    color: '#fff',
-    marginBottom: 15,
+    fontSize: 16,
+    color: '#cbd1d8',
+    marginBottom: 12,
+    fontWeight: '600',
   },
   playerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#202124',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    padding: 14,
+    borderRadius: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: 'rgba(255,255,255,0.06)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
   },
   avatar: {
     width: 32,
@@ -185,6 +226,8 @@ const styles = StyleSheet.create({
     marginRight: 10,
     position: 'relative',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.15)'
   },
   crownContainer: {
     position: 'absolute',
@@ -202,14 +245,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   playerName: {
-    fontSize: 18,
-    color: '#e8eaed',
+    fontSize: 16,
+    color: '#e2e6ea',
     flex: 1,
+    fontWeight: '600',
   },
   hostPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6c5ce7',
+    backgroundColor: 'rgba(108, 92, 231, 0.9)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
@@ -223,28 +267,47 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#6c5ce7',
-    padding: 15,
-    borderRadius: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(108, 92, 231, 0.5)',
+    shadowColor: '#6c5ce7',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
   },
   buttonDisabled: {
     backgroundColor: '#444',
   },
   buttonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   waitingBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 16,
   },
   waitingText: {
     color: '#9aa0a6',
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
+  },
+  headerBackButton: {
+    position: 'absolute',
+    top: 20,
+    left: 24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
   }
 });
