@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import React, { memo, useContext, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Easing, ImageBackground, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ImageBackground, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import storyData from '../assets/story.json';
 import { AchievementsContext } from '../shared/AchievementsContext';
@@ -22,15 +22,19 @@ export default function GameScreen({ route, navigation }) {
   const voteCountRef = useRef({ votes: 0, total: 0 });
   const [selectedChoice, setSelectedChoice] = useState(null);
   const [votersByChoice, setVotersByChoice] = useState({});
-  const [typedText, setTypedText] = useState('');
+  // removed: typedText
   const [showChoices, setShowChoices] = useState(false); // KAPALI - metin bitince gelecek
   const [lastChoice, setLastChoice] = useState(null);
   const [showSkipButton, setShowSkipButton] = useState(false);
   const [displayText, setDisplayText] = useState('');
-  const [passageHistory, setPassageHistory] = useState([]); // Chat geçmişi
+  // removed: passageHistory (chat geçmişi kapalı)
   const [showTyping, setShowTyping] = useState(false); // "Yazıyor" animasyonu
   const [typingAnimation, setTypingAnimation] = useState(0); // Animasyon durumu
-  const [messageCount, setMessageCount] = useState(0); // Mesaj sayacı
+  // Zamanlayıcı referansları: skip sırasında temizlemek için
+  const typingTimerRef = useRef(null);
+  const pauseTimerRef = useRef(null);
+  const scrollTimerRef = useRef(null);
+  // removed: messageCount
   const [lastChoiceHeight, setLastChoiceHeight] = useState(0); // Sarı rozet yüksekliği
   const [bottomBarHeight, setBottomBarHeight] = useState(0); // Alt çubuk yüksekliği
   const isSkippedRef = useRef(false); // Skip durumu - ref ile
@@ -39,15 +43,14 @@ export default function GameScreen({ route, navigation }) {
   const speedModeRef = useRef('medium');
   useEffect(() => { speedModeRef.current = speedMode; }, [speedMode]);
   const { addAchievement } = useContext(AchievementsContext);
-  const typerRef = useRef(null);
+  // removed: typerRef (kullanılmıyor)
   const scrollViewRef = useRef(null);
   const insets = useSafeAreaInsets();
-  const [textOpacity, setTextOpacity] = useState(0.3);
-  const currentTextRef = useRef('');
+  // removed: textOpacity, currentTextRef (kullanılmıyor)
   const isTypingRef = useRef(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
-  const passageFade = useRef(new Animated.Value(1)).current;
+  // removed: passageFade (blink fix sonrası kullanılmıyor)
 
   const passage = storyData[currentPassage];
   // Tek background görsel + düşük opacity
@@ -78,26 +81,13 @@ export default function GameScreen({ route, navigation }) {
       // Sağ üst rozete kazanan seçimi yaz (decode edilmiş)
       if (choice) setLastChoice(decodeHtmlEntities(choice));
       
-      // Kazanan seçimi geçmişe ekle (WhatsApp gibi) - tırnak işareti olmadan
-      const choiceMessage = {
-        id: `choice-${Date.now()}-${Math.random()}`,
-        title: '',
-        content: choice,
-        timestamp: new Date().toLocaleTimeString(),
-        isUserChoice: true
-      };
-      setPassageHistory(prev => [...prev, choiceMessage]);
+      // Chat geçmişi kaldırıldı – sadece rozet güncelleniyor
       
       // Hikayeyi ilerlet
       if (nextPassage !== undefined) {
         console.log('Setting currentPassage to:', nextPassage);
         setCurrentPassage(nextPassage);
       }
-
-      // Beraberlik kontrolü (en yüksek oy sayısı birden fazla seçenek)
-      const maxCount = voteCounts ? Math.max(...Object.values(voteCounts)) : 0;
-      const topChoices = voteCounts ? Object.keys(voteCounts).filter(k => voteCounts[k] === maxCount) : [];
-      const isTie = topChoices.length > 1;
 
       const proceedTransition = () => {
         // passageFade animasyonu kaldırıldı - blink önleme
@@ -108,34 +98,8 @@ export default function GameScreen({ route, navigation }) {
         setVotersByChoice({});
         progressAnim.setValue(0);
       };
-
-      if (isTie) {
-        // Splash yazısı
-        setShowFateSplash(true);
-        setTimeout(() => {
-          setShowFateSplash(false);
-          // Zar animasyonu
-          setShowDice(true);
-          diceSpin.setValue(0);
-          Animated.loop(
-            Animated.timing(diceSpin, {
-              toValue: 1,
-              duration: 600,
-              easing: Easing.linear,
-              useNativeDriver: true,
-            }),
-            { iterations: 3 }
-          ).start(() => {
-            setShowDice(false);
-            proceedTransition();
-          });
-        }, 900);
-      } else {
-        // Direkt geçiş
-        setTimeout(() => {
-          proceedTransition();
-        }, 1000);
-      }
+      // Direkt geçiş (gecikme/animasyon yok)
+      proceedTransition();
     });
 
     // Zar mekaniği kaldırıldı - artık sadece normal voteResult kullanılıyor
@@ -171,7 +135,7 @@ export default function GameScreen({ route, navigation }) {
   // Typewriter effect - tek useEffect
   useEffect(() => {
     const text = decodeHtmlEntities(passage?.content || '');
-    setTypedText('');
+    // typedText kaldırıldı
     setDisplayText('');
     setShowChoices(false); // Seçenekler kapalı - metin bitince gelecek
     setShowSkipButton(true);
@@ -196,19 +160,16 @@ export default function GameScreen({ route, navigation }) {
         const token = tokens[tokenIndex];
         const tokenTrim = token.trim();
 
-        // Eğer tek başına "..." ya da "…" ise: animasyonu göster, 3.5s bekle, yazmaya devam et
+        // Üç nokta için kısa duraklama (istenen efekt)
         if (tokenTrim === '...' || tokenTrim === '…') {
           setShowTyping(true);
-          setTimeout(() => {
+          pauseTimerRef.current && clearTimeout(pauseTimerRef.current);
+          pauseTimerRef.current = setTimeout(() => {
             setShowTyping(false);
-            tokenIndex++; // '...' karakterlerini ekrana yazmadan atla
-            // '...' sonrasında gelen tek newline'ı da yutarak ekstra boş satırı engelle
-            const nextToken = tokens[tokenIndex];
-            if (nextToken && /\n/.test(nextToken)) {
-              tokenIndex++;
-            }
-            setTimeout(typeNextToken, 0);
-          }, 3500);
+            tokenIndex++; // '...' token'ını atla
+            typingTimerRef.current && clearTimeout(typingTimerRef.current);
+            typingTimerRef.current = setTimeout(typeNextToken, 0);
+          }, 3000);
           return;
         }
 
@@ -217,9 +178,10 @@ export default function GameScreen({ route, navigation }) {
 
         // Scroll to bottom
         if (scrollViewRef.current) {
-          setTimeout(() => {
+          scrollTimerRef.current && clearTimeout(scrollTimerRef.current);
+          scrollTimerRef.current = setTimeout(() => {
             if (scrollViewRef.current) {
-              scrollViewRef.current.scrollToEnd({ animated: true });
+              scrollViewRef.current.scrollToEnd({ animated: false });
             }
           }, 50);
         }
@@ -230,7 +192,8 @@ export default function GameScreen({ route, navigation }) {
         const mode = speedModeRef.current;
         const factor = mode === 'slow' ? 1.8 : mode === 'fast' ? 0.5 : 1.0;
         const base = Math.max(1, Math.round(baseRaw * factor));
-        setTimeout(typeNextToken, base);
+        typingTimerRef.current && clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = setTimeout(typeNextToken, base);
       } else {
         setShowTyping(false);
         setShowChoices(true);
@@ -241,19 +204,16 @@ export default function GameScreen({ route, navigation }) {
     // Yazımı başlat: her pasaj başında kısa bir "yazıyor" beklemesi
     // İlk anlamlı token '...' ise, onun akışı zaten özel bekleme yapacak; aksi halde kısa intro beklemesi uygula
     const firstNonWsIndex = tokens.findIndex(t => t.trim().length > 0);
-    const firstNonWsIsDots = firstNonWsIndex >= 0 && (tokens[firstNonWsIndex].trim() === '...' || tokens[firstNonWsIndex].trim() === '…');
-    if (!firstNonWsIsDots) {
-      setShowTyping(true);
-      setTimeout(() => {
-        setShowTyping(false);
-        typeNextToken();
-      }, 800);
-    } else {
-      setTimeout(typeNextToken, 500);
-    }
+    // Başlangıç beklemesi kaldırıldı; doğrudan yazmaya başla
+    typingTimerRef.current && clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(typeNextToken, 0);
     return () => {
       isTypingRef.current = false;
       setShowSkipButton(false);
+      // Temizlik
+      typingTimerRef.current && clearTimeout(typingTimerRef.current);
+      pauseTimerRef.current && clearTimeout(pauseTimerRef.current);
+      scrollTimerRef.current && clearTimeout(scrollTimerRef.current);
     };
   }, [currentPassage]);
 
@@ -307,14 +267,20 @@ export default function GameScreen({ route, navigation }) {
       setShowTyping(false);
       setShowSkipButton(false);
       setShowChoices(true);
+      // Aktif zamanlayıcıları temizle
+      typingTimerRef.current && clearTimeout(typingTimerRef.current);
+      pauseTimerRef.current && clearTimeout(pauseTimerRef.current);
+      scrollTimerRef.current && clearTimeout(scrollTimerRef.current);
       
-      // Tüm metni tek konteynerde hemen göster (paragrafları KORU)
-      const fullText = decodeHtmlEntities(passage?.content || '');
+      // Tüm metni tek konteynerde hemen göster (paragrafları KORU) + CRLF normalize
+      const raw = passage?.content || '';
+      const fullText = decodeHtmlEntities(raw).replace(/\r\n/g, '\n');
       setDisplayText(fullText);
       
       // Scroll to bottom - WhatsApp gibi
       if (scrollViewRef.current) {
-        setTimeout(() => {
+        scrollTimerRef.current && clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = setTimeout(() => {
           if (scrollViewRef.current) {
             scrollViewRef.current.scrollToEnd({ animated: true });
           }
@@ -376,23 +342,33 @@ export default function GameScreen({ route, navigation }) {
       <ScrollView
         ref={scrollViewRef}
         style={styles.storyContainer}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: bottomBarHeight + (insets?.bottom || 0) + 32, paddingTop: 0 }}
+        contentContainerStyle={{ 
+          paddingBottom: (!showChoices ? ((bottomBarHeight || 56) + (insets?.bottom || 0) + 64) : ((insets?.bottom || 0) + 24)),
+          paddingTop: 0 
+        }}
         showsVerticalScrollIndicator={true}
         scrollEventThrottle={16}
         onScrollBeginDrag={() => {
           isTypingRef.current = false;
         }}
+        onContentSizeChange={() => {
+          if (isTypingRef.current && scrollViewRef.current && !showChoices) {
+            scrollViewRef.current.scrollToEnd({ animated: false });
+          }
+        }}
       >
-        <Text style={styles.storyText}>
-          {displayText}
-          {showTyping && (
-            <Text>
-              <Text style={[styles.typingDot, { opacity: typingAnimation === 0 ? 1 : 0.3 }]}>.</Text>
-              <Text style={[styles.typingDot, { opacity: typingAnimation === 1 ? 1 : 0.3 }]}>.</Text>
-              <Text style={[styles.typingDot, { opacity: typingAnimation === 2 ? 1 : 0.3 }]}>.</Text>
-            </Text>
-          )}
-        </Text>
+        <View style={{ minHeight: '100%' }}>
+          <Text style={styles.storyText}>
+            {displayText}
+            {showTyping && (
+              <Text>
+                <Text style={[styles.typingDot, { opacity: typingAnimation === 0 ? 1 : 0.3 }]}>.</Text>
+                <Text style={[styles.typingDot, { opacity: typingAnimation === 1 ? 1 : 0.3 }]}>.</Text>
+                <Text style={[styles.typingDot, { opacity: typingAnimation === 2 ? 1 : 0.3 }]}>.</Text>
+              </Text>
+            )}
+          </Text>
+        </View>
         {Platform.OS === 'web' && showChoices && (
           <View style={styles.choicesContainer}>
             {passage?.links.map((link, index) => {
@@ -413,7 +389,7 @@ export default function GameScreen({ route, navigation }) {
           </View>
         )}
         {/* Alt çubuğun altında kalmaması için ekstra spacer */}
-        {showSkipButton && <View style={{ height: bottomBarHeight + (insets?.bottom || 0) + 16 }} />}
+        <View style={{ height: (bottomBarHeight || 56) + (insets?.bottom || 0) + 16 }} />
       </ScrollView>
 
       {/* Voting progress - above bottom controls */}
@@ -426,8 +402,8 @@ export default function GameScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* Skip Button */}
-      {showSkipButton && (
+      {/* Bottom speed bar only while typing (choices hidden) */}
+      {!showChoices && (
         <View style={styles.bottomBar} onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}>
           <View style={styles.speedRowBar}>
             <TouchableOpacity onPress={() => setSpeedMode('slow')} activeOpacity={0.8} style={[styles.speedPillBar, speedMode === 'slow' && styles.speedPillBarActive]}>
@@ -440,9 +416,6 @@ export default function GameScreen({ route, navigation }) {
             <Text style={[styles.speedTextBar, speedMode === 'fast' && styles.speedTextBarActive]}>Fast</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.skipFab} onPress={skipText}>
-            <Text style={styles.skipFabText}>Skip</Text>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -497,9 +470,8 @@ const styles = StyleSheet.create({
   },
   storyContainer: {
     flex: 1,
-    padding: 20,
-    overflow: 'auto',
-    height: '100%',
+    paddingHorizontal: 20,
+    paddingTop: 0,
   },
   storyText: {
     fontSize: 16,
