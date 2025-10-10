@@ -34,6 +34,7 @@ export default function GameScreen({ route, navigation }) {
   const typingTimerRef = useRef(null);
   const pauseTimerRef = useRef(null);
   const scrollTimerRef = useRef(null);
+  const webSafetyTimerRef = useRef(null);
   // removed: messageCount
   const [lastChoiceHeight, setLastChoiceHeight] = useState(0); // Sarı rozet yüksekliği
   const [bottomBarHeight, setBottomBarHeight] = useState(0); // Alt çubuk yüksekliği
@@ -134,7 +135,8 @@ export default function GameScreen({ route, navigation }) {
 
   // Typewriter effect - tek useEffect
   useEffect(() => {
-    const text = decodeHtmlEntities(passage?.content || '');
+    const textRaw = passage?.content || '';
+    const text = decodeHtmlEntities(textRaw);
     // typedText kaldırıldı
     setDisplayText('');
     setShowChoices(false); // Seçenekler kapalı - metin bitince gelecek
@@ -201,6 +203,19 @@ export default function GameScreen({ route, navigation }) {
       }
     };
     
+    // WEB güvenlik: çok uzun içerikte veya beklemelerde takılmayı önlemek için
+    if (Platform.OS === 'web') {
+      webSafetyTimerRef.current && clearTimeout(webSafetyTimerRef.current);
+      webSafetyTimerRef.current = setTimeout(() => {
+        if (!showChoices) {
+          isSkippedRef.current = true;
+          setShowTyping(false);
+          setDisplayText(decodeHtmlEntities(textRaw).replace(/\r\n/g, '\n'));
+          setShowChoices(true);
+        }
+      }, 12000);
+    }
+
     // Yazımı başlat: her pasaj başında kısa bir "yazıyor" beklemesi
     // İlk anlamlı token '...' ise, onun akışı zaten özel bekleme yapacak; aksi halde kısa intro beklemesi uygula
     const firstNonWsIndex = tokens.findIndex(t => t.trim().length > 0);
@@ -214,6 +229,7 @@ export default function GameScreen({ route, navigation }) {
       typingTimerRef.current && clearTimeout(typingTimerRef.current);
       pauseTimerRef.current && clearTimeout(pauseTimerRef.current);
       scrollTimerRef.current && clearTimeout(scrollTimerRef.current);
+      webSafetyTimerRef.current && clearTimeout(webSafetyTimerRef.current);
     };
   }, [currentPassage]);
 
