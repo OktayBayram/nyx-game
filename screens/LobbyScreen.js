@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    marginLeft: -55,
+    marginLeft: 10,
   },
   hostBadge: {
     color: '#fff',

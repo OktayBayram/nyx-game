@@ -317,6 +317,10 @@ export default function GameScreen({ route, navigation }) {
       <TouchableOpacity
         style={styles.headerBackButton}
         onPress={() => {
+          if (Platform.OS === 'web') {
+            navigation.goBack();
+            return;
+          }
           Alert.alert('Are you sure?', 'Return to the lobby?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Confirm', style: 'destructive', onPress: () => navigation.goBack() },
